@@ -1,0 +1,68 @@
+includes:
+    - vendor/phpstan/phpstan-symfony/extension.neon
+    - vendor/phpstan/phpstan-doctrine/extension.neon
+    - vendor/phpstan/phpstan-deprecation-rules/rules.neon
+    - vendor/phpstan/phpstan-strict-rules/rules.neon
+
+parameters:
+    level: 8
+    tmpDir: var/cache/_phpstan
+    parallel:
+        jobSize: 20
+        maximumNumberOfProcesses: 16
+        minimumNumberOfJobsPerProcess: 2
+        processTimeout: 30.0
+
+#    symfony:
+#        containerXmlPath: var/cache/dev/App_KernelDevDebugContainer.xml
+
+#    doctrine:
+#        objectManagerLoader: .tools/PHPStan/object-manager.php
+
+    stubFiles:
+        - .tools/PHPStan/Stubs/Doctrine/ClassUtils.php
+        - .tools/PHPStan/Stubs/Doctrine/PostLoadEventArgs.php
+        - .tools/PHPStan/Stubs/Doctrine/PersistentCollection.php
+
+    ignoreErrors:
+        # It's a deliberate use of ReflectionClass for validation, so it is meant to error-out on non-class-string
+        - message: '!Parameter #1 \$objectOrClass of class ReflectionClass constructor expects class-string<T of object>|T of object, string given.!'
+          path: src/DependencyInjection/Configuration.php
+
+        # ext-posix is optional for non-dev installs, but PHPStan cannot know that
+        - "#Call to function is_callable\\(\\) with \\'posix_geteuid\\' will always evaluate to true\\.#"
+
+        # There's no good way of solving this... it seems that Doctrine's file defines a wrong return type hmm
+        - '!Parameter \#4 \$entityMeta of method OwlCorp\\HawkAuditor\\Helper\\DoctrineHelper\:\:serializeEntityIdentity\(\) expects Doctrine\\ORM\\Mapping\\ClassMetadataInfo, Doctrine\\Persistence\\Mapping\\ClassMetadata\<object\> given!'
+        - '!Property OwlCorp\\HawkAuditor\\Helper\\DoctrineHelper\:\:\$metaCache \(array\<class\-string, Doctrine\\ORM\\Mapping\\ClassMetadataInfo\>\) does not accept array\<class\-string, Doctrine\\Persistence\\Mapping\\ClassMetadata\<object\>\>\.!'
+
+        # This is a part of greater magic to guess the user access methods and it seems to have proper boundary checks
+        - '#Access to an undefined property Symfony\\Component\\Security\\Core\\User\\UserInterface::\$id\.#'
+        - '#Variable property access on Symfony\\Component\\Security\\Core\\User\\UserInterface\.#'
+
+        # TODO: not implemented
+        - '#Property OwlCorp\\HawkAuditor\\Processor\\FilteredProcessor\:\:\$cache is never read, only written\.#'
+
+        # False-positive: in certain cases we can be sure it is a scalar return and that's why it is assigned this way
+        # The getEntityChangeSet() is a generic method for all typs of operations, but where it is directly assigned
+        # (e.g. in handling insert) Doctrine will not return a collection
+        - '#Property .*EntityRecord::\$stateChange \(array\<string, array\{mixed, mixed\}\>\) does not accept array\<string, array\{mixed, mixed\}\|Doctrine\\ORM\\PersistentCollection\>#'
+
+        # Canary left testInstanceOf error-out one day (it seems impossible to happen now)
+        - message: '#Parameter \#1 \$name of static method Doctrine\\DBAL\\Types\\Type\:\:getType\(\) expects string, string\|null given#'
+          path: src/Helper/DoctrineHelper.php
+
+
+    tipsOfTheDay: false
+    polluteScopeWithLoopInitialAssignments: false
+    polluteScopeWithAlwaysIterableForeach: false
+    checkAlwaysTrueCheckTypeFunctionCall: true
+    checkAlwaysTrueInstanceof: true
+    checkAlwaysTrueStrictComparison: true
+    checkExplicitMixedMissingReturn: true
+    checkFunctionNameCase: true
+    reportMaybesInMethodSignatures: true
+    reportStaticMethodSignatures: true
+    checkTooWideReturnTypesInProtectedAndPublicMethods: true
+    treatPhpDocTypesAsCertain: false
+    checkMissingIterableValueType: false # handled by PHPCs with more granularity

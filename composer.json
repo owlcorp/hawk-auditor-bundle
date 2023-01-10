@@ -1,0 +1,63 @@
+{
+    "name": "owlcorp/hawk-auditor-bundle",
+    "description": "Simple & ORM-driven audit bundle",
+    "type": "symfony-bundle",
+    "license": "GPL-2.0-only",
+    "minimum-stability": "stable",
+    "prefer-stable": true,
+    "require": {
+        "php": ">=8.1",
+        "symfony/config": "^5.4|^6.0",
+        "symfony/console": "^6.2",
+        "symfony/cache-contracts": "^1.0|^2.0|^3.0",
+        "symfony/dependency-injection": "^5.4|^6.0",
+        "symfony/http-kernel": "^5.4|^6.0",
+        "symfony/polyfill-php82": "^1.0"
+    },
+    "suggests": {
+        "doctrine/orm": "Needed to audit Doctrine ORM or save data to it",
+        "ext-posix": "Allows capturing users in CLI",
+        "symfony/security-bundle": "Allows capturing users from HTTP context"
+    },
+    "config": {
+        "sort-packages": true,
+        "allow-plugins": {
+            "dealerdirect/phpcodesniffer-composer-installer": true
+        }
+    },
+    "autoload": {
+        "psr-4": {
+            "OwlCorp\\HawkAuditor\\": "src/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "OwlCorp\\HawkAuditor\\Tests\\": "tests/"
+        }
+    },
+    "scripts": {
+        "phpcs": "vendor/bin/phpcs --standard=phpcs.xml.dist",
+        "phpstan": "vendor/bin/phpstan -c phpstan.src.neon",
+        "check-code-quality": [
+            "@phpcs -s --extensions=php ./src",
+            "vendor/bin/phpstan analyse src -c phpstan.src.neon"
+        ],
+        "fix-cs": [
+            "vendor/bin/phpcbf --standard=phpcs.xml.dist"
+        ]
+    },
+    "require-dev": {
+        "ext-posix": "*",
+        "doctrine/orm": "^2.10",
+        "phpstan/phpstan": "^1.9",
+        "phpstan/phpstan-deprecation-rules": "^1.0",
+        "phpstan/phpstan-doctrine": "^1.3",
+        "phpstan/phpstan-strict-rules": "^1.4",
+        "phpstan/phpstan-symfony": "^1.2",
+        "phpunit/phpunit": "^9.5",
+        "ramsey/uuid": "^4.7",
+        "roave/security-advisories": "dev-latest",
+        "slevomat/coding-standard": "^8.7",
+        "symfony/security-bundle": "^5.4|^6.0"
+    }
+}

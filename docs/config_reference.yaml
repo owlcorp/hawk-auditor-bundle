@@ -1,0 +1,331 @@
+# Full configuration reference - if something isn't here, it's probably not supported
+#
+# WARNING: this isn't an example config! If copied&pasted it will not work without modification. This is just a
+#          reference document. See docs for example of configuration. If you're an experienced developer you can use
+#          this file to configure the library thou, especially if you're familiar with Symfony internals.
+
+hawk_auditor:
+    # Any element under the main "hawk_auditor" defines a new instance of HawkUnitOfWork. By itself it represents a
+    # complete processing pipeline. While you can provide your own implementation of the UnitOfWork, it is not
+    # recommended as this configuration obviously cannot configure it for you.
+    # The audit pipeline follow a combination of Unit of Work and Event-Driven Architecture patterns & terminology.
+
+    minimalistic_audit: ~ # you technically don't need any config ;)
+
+    realistic_audit: # this is a minimal-ish/realistic config for an app; see the full config below for explanations
+        filters:
+            only_exclude_types: # include all entities, while excluding Noise & Session ones
+                - App\Entity\Noise
+                - App\Entity\Session
+            only_exclude_fields: # include all fields...
+                _any_: # ...but not password & pin on any of them
+                    - password
+                    - pin
+                App\Entity\User: # ...and not resetNonce on User
+                    - resetNonce
+
+    app_audit: # this can be anything, it is a name of audit "group" / pipeline instance
+        # List of services generating events to a UnitOfWork/group instance. They are meant to have as little logic as
+        # possible. The serve as a bridge between your ORM and the auditing system - they should be fast & simple.
+        # If this section is absent from your config it is presumed to contain "doctrine_alter" only if you have
+        # Doctrine ORM installed. Otherwise, it will error-out.
+        #
+        # This section of the config is just a shortcut for defining a service with a tag: hawk_auditor.<group>.producer
+        # e.g. "hawk_auditor.app_audit.producer" in this example. You can use your services config to add new producers,
+        # but while it is possible to mix both this config and your tagging, it is advised to pick one for consistency.
+        # as registering a single producer twice (e.g. with different options) twice is a valid scenario.
+        # Since Symfony Doctrine Bundle is only able to register Doctrine Event Subscribers per connection and not per
+        # EntityManager, this library adds a new tag which automatically registers tagged services to a given entity
+        # manager event manager. See DoctrineAuditProducer interface that defines tag constants. You don't have to
+        # implement that interface thou, but you can to get the correct EM from DIC.
+        producers:
+            # There are shortcuts defined for some built-in producers. Currently, there are only two: doctrine_alter and
+            # doctrine_access.
+            - doctrine_alter:
+                  manager_name: null # name of OM/EM to use from \Doctrine\Persistence\ManagerRegistry; null=default one
+
+            # you can also just use a shortcut like below if you don't want to configure any options
+            - doctrine_alter
+
+            # You can use any service names defined in your application. You are responsible for configuring them.
+            - app.orm_producer # any existing service name alias
+            - App\Audit\Producer\OrmProducer # full service name (FQCN)
+
+        # When the first audit event arrives from a producer a structure called "changeset" is created. This is a
+        # collection of audit events (EntityRecord class) packaged with some metadata. The changeset is created by a
+        # separate factory (a class implementing the ChangesetFactory interface). This library ships with two simple
+        # factories: SymfonyChangesetFactory, which builds upon PhpChangesetFactory. Both of them can, if needed, be
+        # extended, even by inheritance (as they're not marked final).
+        # This configuration parameter defined a name of your own service which will be used for this pipeline to create
+        # changesets. By default, it is "null" which means that an appropriate built-in factory will be created,
+        # configured, and wired automatically for you.
+        changeset_factory: null
+
+        # Processor is a service which makes the early-abort decisions for every event from producers, as well as
+        # processes the changeset before it is sent to a sink. This is where the heavy logic is triggered. Processors,
+        # in concept, aren't bound by any rules - it is up to the implementation to decide what they do or do not do.
+        # This library ships with one processor: FilteredProcessor, which is responsible for calling all the filters
+        # defined. While you can provide your own processor implementation, you probably shouldn't. If you think your
+        # use-case isn't cover by filters, please create an issue first.
+        # In general, this configuration option is provided as future-proofing and extension point. If you're REALLY
+        # thinking about implementing your own processor, make sure to at least look at DoctrineStateMarshaller filter.
+        # This configuration parameter defined a name of your own service which will be used for this pipeline as a
+        # processor By default, it is "null" which means that FilteredProcessor will be created, configured, and wired
+        # automatically for you. Your custom service may implement FilterAwareProcessor interface, to get pre-configured
+        # filters, so that even if you want to roll your own processor you don't need to re-do the filters' config.
+        # Keep in mind you cannot really reuse custom FilteredProcessor services across multiple pipelines, as they need
+        # to receive a FilterProvider in its constructor, which is specific to a pipeline!
+        processor: null
+
+        # Defines filters for this pipeline.
+        #
+        # This section is deliberately slightly "magical" to improve DX for developers using this library. Internally,
+        # this is just dynamically adding and configuring various built-in filters from OwlCorp\HawkAuditor\Filter. You
+        # can completely omit this config section and define services with correct tags. You can even mix both the
+        # config and tagged services (but for obvious reasons this isn't recommended). The recommended way is to set-up
+        # Hawk Auditor filters using this configuration and add your custom ones with tagged services.
+        # The configurator will look for filters tagged with "hawk_auditor.<groupName>.filter.[type|field|changeset]", 
+        # e.g. in this example config, it will register "hawk_auditor.app_audit.type". Each section below describes what 
+        # defining the filter here does and under what priority. This is done so that you can add your custom filters 
+        # with the standard "Symfony autoconfigure way" by just adding a tagged service.
+        # In general, default filters configured here are registered with priorities higher than +499, to allow custom
+        # filters to be called after built-in ones by default. Naturally, you can register your filters with priorities
+        # higher than this config uses (preferably 1000+) to get them called before built-in ones.
+        #
+        # Keep in mind the order of operations of various categories of filters:
+        #  1) types filters are called according to their tagged priority (higher priority = earlier)
+        #  2) if no decision was reached about a given type filters.default.audit_type is used to decide
+        #  3) field filters are called according to their tagged priority
+        #  4) if no decision was reached about a given field filters.default.audit_field is used to decide
+        #  5) changeset filters are called according to their tagged priority
+        #      - this is the only filter type which has access to the actual audit data and its response is never cached
+        #      - it is least performant
+        #      - changeset filters aren't generally meant to make decisions but more to modify the data before they land
+        #        in a sink. That being said, they have a late ability to discard the changeset as a whole.
+        #      - one filter may be registered for you (see "doctrine_marshaller" below)
+        #
+        #
+        # WARNING if you defined a custom "processor" above: this section is only valid if the processor (as defined
+        #         above) supports accepting a OwlCorp\HawkAuditor\Filter\FilterProvider instance in the constructor.
+        #         Otherwise, it will crash during configuration. I.e. if your custom processor doesn't support filter
+        #         you shouldn't have this section in your config.
+        #
+        # REUSING FILTERS: if you have multiple pipelines with the same filter set, you can reuse them using YAML
+        #                  references. Keep in mind that multiple instances of the same filter will be created (to avoid
+        #                  hard to debug cache issues).
+        #                  Read about YAML references: https://joshdevlin.com/blog/yaml-repeating-sections/
+        filters:
+            # Every filter, whether class/type or field name one, can respond in one of three ways: "audit this", "don't
+            # audit this", "I don't know". First two answers will break the chain and stop further filter calls. The
+            # "I don't know"/NULL answer will mean that the next filter in chain will be called. In situations where all
+            # filters respond with NULL, the processor will use the response defined in "default".
+            # Keep in mind you can create impossible configurations here: setting "default.audit_type=true" and adding
+            # "only_include_types" section will essentially ignore the "default.audit_type", as the "only_include_types"
+            # always gives a definitive answer.
+            default:
+                audit_type: true
+                audit_field: true
+
+            # As mentioned above, in the description for the "filters" block, you need to tag your custom filters with
+            # appropriate tag (hawk_auditor.<groupName>.filter.[type|field|changeset]). This library can do it for you
+            # automatically. When enabled, all of your classes implementing interfaces from OwlCorp\HawkAuditor\Filter
+            # will have tags added automatically *AND* registered to this pipeline. If you have multiple pipelines
+            # you may want to disable it and tag them explicitly in your services config, as automatic tagging will not
+            # let you pick-n-choose which filters are registered to a given pipeline. Autoconfiguration will add tags to
+            # all filters implementing the interface. In other words, with autoconfigure you can only control which
+            # pipelines get ALL of your filters but not which pipelines get which filters. This option is however good
+            # for most deployments, as you don't need to configure things or read docs ;)
+            # You can also use "autoconfigure: true" and "autoconfigure: false" shortcuts if you don't need to modify
+            # any other options
+            # If you're rusty on that topic see https://symfony.com/doc/current/service_container/tags.html
+            autoconfigure:
+                enabled: true # by default, it is enabled
+                priority: 0   # default priority Symfony uses as well, your filters will be called after built-in ones
+
+            # Filter: OwlCorp\HawkAuditor\Filter\Type\MatchTypeFilter::includeOnMatchExcludeOtherwise()
+            # Tag: hawk_auditor.<groupName>.filter.type with priority 500
+            # Description: include only entities listed here in the audit, excluding all other ones which are not listed
+            #              here; all types filters with lower priority will NOT be called and the
+            #              filters.default.audit_type setting will be ignored.
+            # Note: to avoid "WTF" debug scenarios you cannot use "only_include_types" and "only_exclude_types" together
+            # Note: the non-only_* filters are registered with a higher priority than only_* filters. This is done to
+            #       make sure you can (but probably shouldn't ;) use both non-only_* filters alongside a only_* filter.
+            #       Also, exclude_* filters have higher priority over include_* ones.
+            only_include_types:
+                - App\Entity\Article
+                - App\Entity\Person
+
+            # Filter: OwlCorp\HawkAuditor\Filter\Type\MatchTypeFilter::excludeOnMatchIncludeOtherwise()
+            # Tag: hawk_auditor.<groupName>.filter.type with priority 500
+            # Description: exclude only entities listed here from being audited, all other ones which are not listed
+            #              here will be included in the audit; all types filters with lower priority will NOT be called
+            #              and the filters.default.audit_type setting will be ignored
+            # Note: to avoid "WTF" debug scenarios you cannot use "only_include_types" and "only_exclude_types" together
+            # Note: the non-only_* filters are registered with a higher priority than only_* filters. This is done to
+            #       make sure you can (but probably shouldn't ;) use both non-only_* filters alongside a only_* filter.
+            #       Also, exclude_* filters have higher priority over include_* ones.
+            only_exclude_types:
+                - App\Entity\File
+                - App\Entity\Session
+
+            # Filter: OwlCorp\HawkAuditor\Filter\Type\MatchTypeFilter::includeOnMatchAbstainOtherwise()
+            # Tag: hawk_auditor.<groupName>.filter.type with priority 510
+            # Description: include all entities listed here in the audit, with all other ones being passed through to
+            #              types filters with lower priorities. If none of the types filters provide a decision about
+            #              given type the filters.default.audit_type will determine if a given type will be audited.
+            # Note: the non-only_* filters are registered with a higher priority than only_* filters. This is done to
+            #       make sure you can (but probably shouldn't ;) use both non-only_* filters alongside a only_* filter.
+            #       Also, exclude_* filters have higher priority over include_* ones.
+            include_types:
+                - App\Entity\User
+                - App\Entity\SecurityClearance
+
+            # Filter: OwlCorp\HawkAuditor\Filter\Type\MatchTypeFilter::excludeOnMatchAbstainOtherwise()
+            # Tag: hawk_auditor.<groupName>.filter.type with priority 520
+            # Description: exclude all entities listed here from the audit, with all other ones being passed through to
+            #              types filters with lower priorities. If none of the types filters provide a decision about
+            #              given type the filters.default.audit_type will determine if a given type will be audited.
+            # Note: the non-only_* filters are registered with a higher priority than only_* filters. This is done to
+            #       make sure you can (but probably shouldn't ;) use both non-only_* filters alongside a only_* filter.
+            #       Also, exclude_* filters have higher priority over include_* ones.
+            exclude_types:
+                - App\Entity\EnqueuedEmail
+                - App\Entity\PageView
+
+            # Filter: OwlCorp\HawkAuditor\Filter\Field\MatchFieldNameFilter::includeOnMatchExcludeOtherwise()
+            # Tag: hawk_auditor.<groupName>.filter.field with priority 500
+            # Description: include only fields listed here in the audit, excluding all other ones which are not listed
+            #              here; all filters with lower priority will NOT be called and the filters.default.audit_field
+            #              setting will be ignored.
+            # Note: to avoid "WTF" debug scenarios you cannot use "only_include_fields" and "only_exclude_fields"
+            #       together
+            # Note: the non-only_* filters are registered with a higher priority than only_* filters. This is done to
+            #       make sure you can (but probably shouldn't ;) use both non-only_* filters alongside a only_* filter.
+            #       Also, exclude_* filters have higher priority over include_* ones.
+            only_include_fields:
+                App\Entity\Article: # include specific fields from one entity and include all other ones in it
+                    - slug
+                    - title
+                App\Entity\Post: ~ # include all fields from one entity. This rarely makes sense as you should be
+                                     # using a type filter to include whole entities. However, in some complex scenarios
+                                     # with multiple custom type filters it may make sense to do this.
+
+                # special wildcard "entity". All fields listed here will be included from any entity; all other fields
+                # not listed under _any_ or specific entity class above will be excluded (as this is a
+                # include_ONLY_fields filter). The _any_ is checked if no match is found for the exact class.
+                _any_:
+                      - name
+                      - tenant
+
+            # Filter: OwlCorp\HawkAuditor\Filter\Field\MatchFieldNameFilter::excludeOnMatchIncludeOtherwise()
+            # Tag: hawk_auditor.<groupName>.filter.field with priority 500
+            # Description: exclude all fields listed here from the audit, while including all other ones which are not
+            #              listed here; all filters with lower priority will NOT be called and the
+            #              filters.default.audit_field setting will be ignored.
+            # Note: to avoid "WTF" debug scenarios you cannot use "only_include_fields" and "only_exclude_fields"
+            #       together
+            # Note: the non-only_* filters are registered with a higher priority than only_* filters. This is done to
+            #       make sure you can (but probably shouldn't ;) use both non-only_* filters alongside a only_* filter.
+            #       Also, exclude_* filters have higher priority over include_* ones.
+            only_exclude_fields:
+                App\Entity\Article: # exclude specific fields from one entity and include all other ones in it
+                      - sessionId
+                      - customCss
+                App\Entity\Post: ~ # excludes all fields from one entity. This rarely makes sense as you should be
+                                     # using a type filter to exclude whole entities. However, in some complex scenarios
+                                     # with multiple custom type filters it may make sense to do this.
+
+                # special wildcard "entity". All fields listed here will be excluded from any entity; all other fields
+                # not listed under _any_ or specific entity class above will be included (as this is a
+                # ONLY_exclude_fields filter). The _any_ is checked if no match is found for the exact class.
+                _any_:
+                      - createdAt
+                      - lockId
+
+            # Filter: OwlCorp\HawkAuditor\Filter\Field\MatchFieldNameFilter::includeOnMatchAbstainOtherwise()
+            # Tag: hawk_auditor.<groupName>.filter.field with priority 510
+            # Description: include all fields listed here in the audit, with all other ones being passed through to
+            #              field filters with lower priorities. If none of the field filters provide a decision about
+            #              given field name the filters.default.audit_field will determine if a given field is audited.
+            # Note: the non-only_* filters are registered with a higher priority than only_* filters. This is done to
+            #       make sure you can (but probably shouldn't ;) use both non-only_* filters alongside a only_* filter.
+            #       Also, exclude_* filters have higher priority over include_* ones.
+            include_fields:
+                App\Entity\Article: # ensure specific fields from one entity are always audited
+                      - author
+                      - tags
+                App\Entity\Post: ~ # include all fields from one entity. This rarely makes sense as you should be
+                                     # using a type filter to include whole entities. However, in some complex scenarios
+                                     # with multiple custom type filters it may make sense to do this.
+
+                # special wildcard "entity". All fields listed here will be included from any entity; all other fields
+                # not listed under _any_ or specific entity class above will be passed along to field filters with lower
+                # priorities. The _any_ is checked if no match is found for the exact class.
+                _any_:
+                      - name
+                      - tenant
+
+            # Filter: OwlCorp\HawkAuditor\Filter\Field\MatchFieldNameFilter::excludeOnMatchAbstainOtherwise()
+            # Tag: hawk_auditor.<groupName>.filter.field with priority 520
+            # Description: exclude all fields listed here int the audit, with all other ones being passed through to
+            #              field filters with lower priorities. If none of the field filters provide a decision about
+            #              given field name the filters.default.audit_field will determine if a given field is audited.
+            # Note: the non-only_* filters are registered with a higher priority than only_* filters. This is done to
+            #       make sure you can (but probably shouldn't ;) use both non-only_* filters alongside a only_* filter.
+            #       Also, exclude_* filters have higher priority over include_* ones.
+            exclude_fields:
+                App\Entity\Article: # ensure specific fields from one entity are never audited
+                      - embargoCode
+                      - customJs
+                App\Entity\Post: ~ # excludes all fields from one entity. This rarely makes sense as you should be
+                                     # using a type filter to exclude whole entities. However, in some complex scenarios
+                                     # with multiple custom type filters it may make sense to do this.
+
+                # special wildcard "entity". All fields listed here will be excluded from any entity (including ones
+                # above unless include_fields included them); all other fields not listed under _any_ or specific entity
+                # class above will be passed along to field filters with lower priorities. The _any_ is checked if no
+                # match is found for the exact class.
+                _any_:
+                      - password
+                      - pin
+
+            # In most cases you don't need to configure any changeset filters (not even this one). This section controls
+            # DoctrineStateMarshaller. It is automatically registered with priority 500 when any Doctrine producer (a
+            # class implementing DoctrineAuditProducer) is used. This is to ensure Doctrine-specific state (e.g.
+            # collections, relations, embedded entities etc.) is transformed to a plain data, and so that ORM-specific
+            # state doesn't leak into AuditSink implementations. This operation is done as a changeset filter and not in
+            # the producer to not waste resources on CPU-heavy transform operations if some user-defined filters decide
+            # to remove fields or whole entities.
+            # Note: this filter is NOT registered automatically when a Doctrine-based sink is used, as this is to mangle
+            # producers-generated state, and has nothing to do with storage.
+            doctrine_changeset_marshaller:
+                enabled: true # will be false if no DoctrineAuditProducer are used in this group
+
+            # Other filers shipped with this library:
+            #  - SymfonyUserProvider: solves Symfony SecurityBundle edge-case, see the class for details; registered
+            #                         automatically if you have symfony/security-bundle with priority of 500
+
+        # All data generated by producers, manged by the processor and filters, is finally delivered to a sink. The role
+        # of a sink is to persist/send the data somewhere. All sink implementations must implement AuditSink interface.
+        # Keep in mind one gotcha: you should synchronize your producers with your sink. If their cycles are decoupled
+        # the audit data may be inconsistent as they will not share the same transaction group. This also applies to a
+        # scenario where your sink persists data to a different database/entity manager!
+        # Note: Internally, if you register more than one sink, the ChainSink will be used to wrap them.
+        sinks:
+            # you don't need to define doctrine_orm explicitly - it will be added if you don't define the "sinks"
+            # section, and you have Doctrine ORM installed.
+            # WARNING: an EMPTY sinks section ("sinks:" / "sinks: []" / "sinks: null") is NOT the same as "sinks"
+            # section not being defined at all. The code will explicitly respect an empty sinks section, and you will
+            # end up with nothing being persisted!
+            - doctrine_entity:
+                manager_name: null # name of OM/EM to use from \Doctrine\Persistence\ManagerRegistry; null=default one
+
+            # you can define the same sink twice too (e.g. to copy data to multiple OMs/EMs)
+            - doctrine_entity:
+                manager_name: another
+
+
+            # Instead of "doctrine_orm" you can use your own custom service as well. You can use any service names
+            # defined in your application. You are responsible for configuring them.
+            - app.custom_sink # any existing service name alias
+            - App\Audit\ExampleCustomSink # full service name (FQCN)
