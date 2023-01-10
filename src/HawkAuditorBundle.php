@@ -26,11 +26,12 @@ class HawkAuditorBundle extends Bundle
     {
         parent::build($container);
 
+        //All passes are registered after extensiuons and doctrine pass (TYPE_BEFORE_OPTIMIZATION)
         $injectionHelper = new InjectionHelper();
-        $container->addCompilerPass(new RegisterProducersPass($injectionHelper));
-        $container->addCompilerPass(new DoctrineEvtSubscribersPass(), PassConfig::TYPE_BEFORE_OPTIMIZATION, 50);
-        $container->addCompilerPass(new ConfigureFilterProviderPass());
-        $container->addCompilerPass(new RegisterSinksPass());
+        $container->addCompilerPass(new RegisterProducersPass($injectionHelper), PassConfig::TYPE_BEFORE_OPTIMIZATION, -255);
+        $container->addCompilerPass(new DoctrineEvtSubscribersPass(), PassConfig::TYPE_BEFORE_OPTIMIZATION, -255);
+        $container->addCompilerPass(new ConfigureFilterProviderPass(), PassConfig::TYPE_BEFORE_OPTIMIZATION, -255);
+        $container->addCompilerPass(new RegisterSinksPass(), PassConfig::TYPE_BEFORE_OPTIMIZATION, -255);
     }
 
     public static function getBugReportStatement(): string

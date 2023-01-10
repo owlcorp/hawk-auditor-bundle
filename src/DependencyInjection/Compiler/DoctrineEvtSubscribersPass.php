@@ -89,6 +89,7 @@ class DoctrineEvtSubscribersPass implements CompilerPassInterface
         if ($emDefClass === ContainerAwareEventManager::class) {
             $refs = $emDef->getArguments()[1] ?? [];
             $refs[] = new Reference($svcId);
+            $emDef->setArgument(1, $refs);
         } else {
             $emDef->addMethodCall('addEventSubscriber', [new Reference($svcId)]);
         }
