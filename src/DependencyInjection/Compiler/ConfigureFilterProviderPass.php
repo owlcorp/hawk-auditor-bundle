@@ -91,8 +91,8 @@ class ConfigureFilterProviderPass extends AbstractUoWPass
 
     private function finalizeFilterBagConfig(ContainerBuilder $container, string $pipeline, string $fpSvcId)
     {
-        $changesetFilterTag = sprintf(HawkAuditorExtension::FILTER_CHANGESET_TAG, $pipeline);
-        $hasFieldNamesFilters = \count($container->findTaggedServiceIds($changesetFilterTag)) > 0;
+        $fieldFilterTag = sprintf(HawkAuditorExtension::FILTER_FIELD_TAG, $pipeline);
+        $hasFieldNamesFilters = \count($container->findTaggedServiceIds($fieldFilterTag)) > 0;
 
         $fieldProviderSvc = $container->findDefinition($fpSvcId);
         $fieldProviderSvc->setArgument('$hasFieldNameFilters', $hasFieldNamesFilters);
