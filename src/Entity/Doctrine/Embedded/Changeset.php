@@ -12,6 +12,7 @@ declare(strict_types=1);
 namespace OwlCorp\HawkAuditor\Entity\Doctrine\Embedded;
 
 use Doctrine\ORM\Mapping as ORM;
+use OwlCorp\DoctrineMicrotime\DBAL\Types\DateTimeImmutableMicroType;
 
 #[ORM\Embeddable]
 final class Changeset
@@ -28,6 +29,6 @@ final class Changeset
      *      The timestamp will always be in UTC. The changeset timestamp will be as close as possible to the actual
      *      time of the audit record being saved to the storage.
      */
-    #[ORM\Column]
+    #[ORM\Column(type: DateTimeImmutableMicroType::NAME)]
     public \DateTimeImmutable $timestamp;
 }

@@ -13,6 +13,7 @@ namespace OwlCorp\HawkAuditor;
 
 use OwlCorp\HawkAuditor\DependencyInjection\Compiler\ConfigureFilterProviderPass;
 use OwlCorp\HawkAuditor\DependencyInjection\Compiler\DoctrineEvtSubscribersPass;
+use OwlCorp\HawkAuditor\DependencyInjection\Compiler\RegisterMicrotimeTypePass;
 use OwlCorp\HawkAuditor\DependencyInjection\Compiler\RegisterProducersPass;
 use OwlCorp\HawkAuditor\DependencyInjection\Compiler\RegisterSinksPass;
 use OwlCorp\HawkAuditor\DependencyInjection\InjectionHelper;
@@ -26,10 +27,11 @@ class HawkAuditorBundle extends Bundle
     {
         parent::build($container);
 
-        //All passes are registered after extensiuons and doctrine pass (TYPE_BEFORE_OPTIMIZATION)
+        //All passes are registered after extensions and doctrine pass (TYPE_BEFORE_OPTIMIZATION)
         $injectionHelper = new InjectionHelper();
         $container->addCompilerPass(new RegisterProducersPass($injectionHelper), PassConfig::TYPE_BEFORE_OPTIMIZATION, -255);
         $container->addCompilerPass(new DoctrineEvtSubscribersPass(), PassConfig::TYPE_BEFORE_OPTIMIZATION, -255);
+        $container->addCompilerPass(new RegisterMicrotimeTypePass(), PassConfig::TYPE_BEFORE_OPTIMIZATION, -255);
         $container->addCompilerPass(new ConfigureFilterProviderPass(), PassConfig::TYPE_BEFORE_OPTIMIZATION, -255);
         $container->addCompilerPass(new RegisterSinksPass(), PassConfig::TYPE_BEFORE_OPTIMIZATION, -255);
     }

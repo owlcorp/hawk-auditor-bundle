@@ -12,6 +12,7 @@ declare(strict_types=1);
 namespace OwlCorp\HawkAuditor\Entity\Doctrine\Embedded;
 
 use Doctrine\ORM\Mapping as ORM;
+use OwlCorp\DoctrineMicrotime\DBAL\Types\DateTimeImmutableMicroType;
 
 /**
  * @phpstan-type TSimpleState array<string, scalar|null>
@@ -21,7 +22,7 @@ use Doctrine\ORM\Mapping as ORM;
 #[ORM\Embeddable]
 final class Change
 {
-    #[ORM\Column]
+    #[ORM\Column(type: DateTimeImmutableMicroType::NAME)]
     public \DateTimeImmutable $timestamp;
 
     /**

@@ -11,6 +11,9 @@ declare(strict_types=1);
 
 namespace OwlCorp\HawkAuditor\DependencyInjection;
 
+use Doctrine\DBAL\Driver;
+use Doctrine\DBAL\Types\Type;
+use OwlCorp\DoctrineMicrotime\DBAL\Types\DateTimeImmutableMicroType;
 use OwlCorp\HawkAuditor\DependencyInjection\Compiler\DoctrineEvtSubscribersPass;
 use OwlCorp\HawkAuditor\DependencyInjection\Compiler\RegisterProducersPass;
 use OwlCorp\HawkAuditor\Exception\RuntimeException;
@@ -43,8 +46,6 @@ use Symfony\Contracts\Cache\CacheInterface;
  * @phpstan-import-type THandler from Configuration
  * @phpstan-import-type TPipelineConfig from Configuration
  * @phpstan-import-type TConfigTpl from Configuration
- *
- * @todo make sure to validate impossible configs:
  */
 final class HawkAuditorExtension extends ConfigurableExtension implements CompilerPassInterface
 {
@@ -63,7 +64,7 @@ final class HawkAuditorExtension extends ConfigurableExtension implements Compil
     //Filters stuff
     public const FILTERS_DEFAULT_PARAM = self::BUNDLE_ALIAS . '.%s.filter_defaults'; //vars: pipeline
     public const FILTERS_PROVIDER_SVC_ID = self::BUNDLE_ALIAS . '.%s.filter_provider'; //vars: pipeline
-    public const FILTER_SVC_ID = self::BUNDLE_ALIAS . '.%s.filter.%s'; //vars: pipeline; filter type
+    private const FILTER_SVC_ID = self::BUNDLE_ALIAS . '.%s.filter.%s'; //vars: pipeline; filter type
     public const FILTER_TYPE_TAG = self::BUNDLE_ALIAS . '.%s.filter.type'; //vars: pipeline
     public const FILTER_FIELD_TAG = self::BUNDLE_ALIAS . '.%s.filter.field'; //vars: pipeline
     public const FILTER_CHANGESET_TAG = self::BUNDLE_ALIAS . '.%s.filter.changeset'; //vars: pipeline
@@ -149,7 +150,7 @@ final class HawkAuditorExtension extends ConfigurableExtension implements Compil
             $this->configureDoctrineMarshaller($container, $pipeline, $config['filters']);
             $this->configureFiltersTags($container, $pipeline, $config['filters']);
             $this->configureSinks($container, $pipeline, $config['sinks']);
-            $this->configureHelperServices($container, $pipeline);
+            $this->configureDoctrineHelper($container);
         }
     }
 
@@ -478,7 +479,7 @@ final class HawkAuditorExtension extends ConfigurableExtension implements Compil
         $sink->addTag(\sprintf(Compiler\RegisterSinksPass::TAG_NAME, $pipeline));
     }
 
-    private function configureHelperServices(ContainerBuilder $container, string $pipeline): void
+    private function configureDoctrineHelper(ContainerBuilder $container): void
     {
         $container->register(self::DOCTRINE_HELPER_SVC_ID, DoctrineHelper::class);
     }
