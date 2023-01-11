@@ -70,7 +70,7 @@ While both bundles are similar in concept, they both diverge in the approach to 
    => DH does NOT log anything when you do collection->clear() and then flush()
    - option to initialize full collections on  
 - logging any pauses in audit logging with reason and source (if desired via PauseAuditFilter)
-
+todo: add option to tag for all audit pipelines
 
 In other words, this bundle isn't better - it addresses the problem from a different angle and with a different 
 architectural compromises.

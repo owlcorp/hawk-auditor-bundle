@@ -29,7 +29,7 @@ final class PauseAuditFilter implements EntityTypeFilter, ChangesetFilter
     private int $captures = 0;
 
     /** @param array<class-string, true> $typesIndex */
-    private function __construct(private ?LoggerInterface $log = null)
+    public function __construct(private ?LoggerInterface $log = null)
     {
         $this->enableLogging = $this->log !== null;
     }
