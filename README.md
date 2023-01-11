@@ -69,6 +69,8 @@ While both bundles are similar in concept, they both diverge in the approach to 
 - different collection handling (separate association/disassociaton events in DH vs included in the main entity update)
    => DH does NOT log anything when you do collection->clear() and then flush()
    - option to initialize full collections on  
+- logging any pauses in audit logging with reason and source (if desired via PauseAuditFilter)
+
 
 In other words, this bundle isn't better - it addresses the problem from a different angle and with a different 
 architectural compromises.
