@@ -51,6 +51,11 @@ final class PauseAuditFilter implements EntityTypeFilter, ChangesetFilter
         return $this;
     }
 
+    public function isAuditPaused(): bool
+    {
+        return !$this->auditEvents;
+    }
+
     public function logPauses(bool $shouldLogPauses = true): static
     {
         if ($shouldLogPauses) {

@@ -116,6 +116,12 @@ final class DoctrineHelper
         // 1:1 replacement.
         $type = $this->typeCache[$entityMeta->getName()][$prop] ?? Type::getType($entityMeta->getTypeOfField($prop));
 
+        //**NOTE TO USERS OF THIS BUNDLE**
+        //If your code throws a TypeError here with "Return value must be of type string|int|float|bool|null,
+        // <someObject> returned", this is NOT a bug in this code. Your entity contains a property which is marked as
+        // a Doctrine Column but there's no type mapping for that type. Usually it happens when you use #[ORM\Column]
+        // without the "type:" argument, or use #[ORM\Column] instead of #[ORM\Embedded]. Check your entity before
+        // reporting a bug ;)
         return $type->convertToDatabaseValue($value, $platform);
     }
 

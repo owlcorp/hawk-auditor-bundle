@@ -36,7 +36,7 @@ use OwlCorp\HawkAuditor\Type\OperationType;
  */
 class HawkUnitOfWork implements AccessUnitOfWork, AlterUnitOfWork
 {
-    private Changeset $changeset;
+    private ?Changeset $changeset = null;
     private bool $changesetFlushing = false;
 
     public function __construct(
@@ -46,7 +46,7 @@ class HawkUnitOfWork implements AccessUnitOfWork, AlterUnitOfWork
     ) {
     }
 
-    public function getChangeset(): Changeset
+    public function getChangeset(): ?Changeset
     {
         return $this->changeset;
     }
@@ -107,7 +107,7 @@ class HawkUnitOfWork implements AccessUnitOfWork, AlterUnitOfWork
 
     public function reset(): void
     {
-        unset($this->changeset);
+        $this->changeset = null;
         $this->changesetFlushing = false;
     }
 

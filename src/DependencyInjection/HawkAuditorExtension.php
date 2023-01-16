@@ -19,6 +19,7 @@ use OwlCorp\HawkAuditor\DependencyInjection\Compiler\RegisterProducersPass;
 use OwlCorp\HawkAuditor\Exception\RuntimeException;
 use OwlCorp\HawkAuditor\Factory\SymfonyChangesetFactory;
 use OwlCorp\HawkAuditor\Filter\Changeset\DoctrineStateMarshaller;
+use OwlCorp\HawkAuditor\Filter\Changeset\SymfonyUserProvider;
 use OwlCorp\HawkAuditor\Filter\ChangesetFilter;
 use OwlCorp\HawkAuditor\Filter\EntityTypeFilter;
 use OwlCorp\HawkAuditor\Filter\Field\MatchFieldNameFilter;
@@ -59,6 +60,7 @@ final class HawkAuditorExtension extends ConfigurableExtension implements Compil
 
     //Helper services
     private const DOCTRINE_HELPER_SVC_ID = self::BUNDLE_ALIAS . '.doctrine_helper';
+    private const SYMFONY_SEC_HELPER_SVC_ID = self::BUNDLE_ALIAS . '.symfony_security_helper';
     public const PROCESSOR_SVC_ID = self::BUNDLE_ALIAS . '.%s.processor'; //vars: pipeline
 
     //Filters stuff
@@ -189,20 +191,13 @@ final class HawkAuditorExtension extends ConfigurableExtension implements Compil
             return $this->internalChangesetFactoryId;
         }
 
-        $symfonySecHelperId = self::BUNDLE_ALIAS . '.security_helper';
-        $symfonySecHelper =  $container->register($symfonySecHelperId, SymfonySecurityHelper::class);
-        $symfonySecHelper->setArgument(
-            '$tokenStorage',
-            new Reference(TokenStorageInterface::class, ContainerInterface::NULL_ON_INVALID_REFERENCE)
-        );
-
         $this->internalChangesetFactoryId = self::BUNDLE_ALIAS . '.changeset_factory';
         $symfonySetFct = $container->register($this->internalChangesetFactoryId, SymfonyChangesetFactory::class);
         $symfonySetFct->setArgument(
             RequestStack::class,
             new Reference('$requestStack', ContainerInterface::NULL_ON_INVALID_REFERENCE)
         );
-        $symfonySetFct->setArgument('$securityHelper', new Reference($symfonySecHelperId));
+        $symfonySetFct->setArgument('$securityHelper', new Reference(self::SYMFONY_SEC_HELPER_SVC_ID));
 
         $container->log(
             $this,
@@ -357,15 +352,42 @@ final class HawkAuditorExtension extends ConfigurableExtension implements Compil
             $marshaller = $container->register($marshallerSvcId, DoctrineStateMarshaller::class);
             $marshaller->setArgument('$dHelper', new Reference(self::DOCTRINE_HELPER_SVC_ID));
         }
-        $marshaller->addTag(\sprintf(self::FILTER_CHANGESET_TAG, $pipeline));
+        $marshaller->addTag(\sprintf(self::FILTER_CHANGESET_TAG, $pipeline), ['priority' => 500]);
 
         $container->log(
             $this,
             \sprintf(
                 'Pipeline "%s" added special changeset filter "%s" (svc: "%s")',
                 $pipeline,
-                DoctrineStateMarshaller::class,
+                $marshaller->getClass(),
                 $marshallerSvcId
+            )
+        );
+    }
+
+    private function configureSymfonyUserProvider(ContainerBuilder $container, string $pipeline): void
+    {
+        if (!\interface_exists(TokenStorageInterface::class)) {
+            return;
+        }
+
+        //The service can be shared, as it is not specific to a pipeline (thus we don't use FILTER_SVC_ID)
+        $userProviderSvcId = \sprintf(self::BUNDLE_ALIAS . '.symfony_user_provider');
+        if ($container->has($userProviderSvcId)) {
+            $userProvider = $container->getDefinition($userProviderSvcId);
+        } else {
+            $userProvider = $container->register($userProviderSvcId, SymfonyUserProvider::class);
+            $userProvider->setArgument(SymfonySecurityHelper::class, new Reference(self::SYMFONY_SEC_HELPER_SVC_ID));
+        }
+        $userProvider->addTag(\sprintf(self::FILTER_CHANGESET_TAG, $pipeline), ['priority' => 550]);
+
+        $container->log(
+            $this,
+            \sprintf(
+                'Pipeline "%s" added Symfony Security filter "%s" (svc: "%s")',
+                $pipeline,
+                $userProvider->getClass(),
+                $userProviderSvcId
             )
         );
     }
@@ -412,16 +434,16 @@ final class HawkAuditorExtension extends ConfigurableExtension implements Compil
         // don't know if there are any tagged services for any of the categories and the FilterProvider needs that hint
         $provider = $container->register(\sprintf(self::FILTERS_PROVIDER_SVC_ID, $pipeline), FilterProvider::class);
         $provider->setArgument(
-            '$changesetFiltersIt',
-            new TaggedIteratorArgument(\sprintf(self::FILTER_CHANGESET_TAG, $pipeline))
-        );
-        $provider->setArgument(
             '$entityTypeFiltersIt',
             new TaggedIteratorArgument(\sprintf(self::FILTER_TYPE_TAG, $pipeline))
         );
         $provider->setArgument(
             '$fieldNameFiltersIt',
-            new TaggedIteratorArgument(\sprintf(self::FILTER_TYPE_TAG, $pipeline))
+            new TaggedIteratorArgument(\sprintf(self::FILTER_FIELD_TAG, $pipeline))
+        );
+        $provider->setArgument(
+            '$changesetFiltersIt',
+            new TaggedIteratorArgument(\sprintf(self::FILTER_CHANGESET_TAG, $pipeline))
         );
     }
 
@@ -482,6 +504,12 @@ final class HawkAuditorExtension extends ConfigurableExtension implements Compil
     private function configureDoctrineHelper(ContainerBuilder $container): void
     {
         $container->register(self::DOCTRINE_HELPER_SVC_ID, DoctrineHelper::class);
+
+        $symfonySecHelper =  $container->register(self::SYMFONY_SEC_HELPER_SVC_ID, SymfonySecurityHelper::class);
+        $symfonySecHelper->setArgument(
+            '$tokenStorage',
+            new Reference(TokenStorageInterface::class, ContainerInterface::NULL_ON_INVALID_REFERENCE)
+        );
     }
 
     public static function getProducerShortAlias(string $fqcn): string

@@ -39,6 +39,7 @@ final class DoctrineAccessProducer implements DoctrineAuditProducer
      */
     public function postLoad(object $evt): void
     {
+        dd('this should not happen');
         if ($evt instanceof LifecycleEventArgs) {
             $entity = $evt->getObject();
             $om = $evt->getObjectManager();

@@ -27,7 +27,7 @@ interface UnitOfWork
      *
      * UoW implementation may decide to swap this changeset at any time, i.e. it should not be cached by callers.
      */
-    public function getChangeset(): Changeset;
+    public function getChangeset(): ?Changeset;
 
     /**
      * Called by AuditProducer when the given changeset should be closed and passed to an AuditSink
