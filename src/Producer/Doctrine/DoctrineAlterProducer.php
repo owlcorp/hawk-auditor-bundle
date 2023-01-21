@@ -72,9 +72,11 @@ final class DoctrineAlterProducer implements DoctrineAuditProducer
         $om = $evt instanceof ManagerEventArgs ? $evt->getObjectManager() : $evt->getEntityManager();
         $dUoW = $om->getUnitOfWork();
 
-        $this->handleInserts($dUoW, $om, $changeset);
-        $this->handleUpdates($dUoW, $om, $changeset);
-        $this->handleDeletes($dUoW, $om, $changeset);
+        if ($changeset !== null) {
+            $this->handleInserts($dUoW, $om, $changeset);
+            $this->handleDeletes($dUoW, $om, $changeset);
+        }
+        $this->handleUpdates($dUoW, $om);
 
         //Even thou associations/disassociation happen before main entity is deleted, we should log them last. This is
         // because the association/disassociation events by design aren't logged separately but as an update to the
@@ -106,7 +108,7 @@ final class DoctrineAlterProducer implements DoctrineAuditProducer
         }
     }
 
-    private function handleUpdates(DoctrineUnitOfWork $dUoW, ObjectManager $om, Changeset $changeset): void
+    private function handleUpdates(DoctrineUnitOfWork $dUoW, ObjectManager $om): void
     {
         foreach ($dUoW->getScheduledEntityUpdates() as $entity) {
             //Updates need special handling. Doctrine does NOT fire onPersist() events for managed entities which were
@@ -156,7 +158,7 @@ final class DoctrineAlterProducer implements DoctrineAuditProducer
     }
 
     //phpcs:ignore SlevomatCodingStandard.Complexity.Cognitive.ComplexityTooHigh -- performance-sensitive code
-    private function handleCollectionDeletions(DoctrineUnitOfWork $dUoW, ObjectManager $om, Changeset $changeset): void
+    private function handleCollectionDeletions(DoctrineUnitOfWork $dUoW, ObjectManager $om, ?Changeset $changeset): void
     {
         //This essentially replicates what \Doctrine\ORM\Persisters\Collection\ManyToManyPersister::delete() does
         foreach ($dUoW->getScheduledCollectionDeletions() as $collection) {
@@ -176,9 +178,9 @@ final class DoctrineAlterProducer implements DoctrineAuditProducer
             //When collection are cleared and nothing else is happening with the entity, the entity isn't scheduled for
             // update (which is slightly weird as it is when collection items are added...)
             if ($dUoW->isScheduledForUpdate($owningSide)) { //the collection is cleared AND other fields are modified
-                $ownerDto = $changeset->getEntity(OperationType::UPDATE, $owningSide);
+                $ownerDto = $changeset?->getEntity(OperationType::UPDATE, $owningSide);
             } elseif ($dUoW->isScheduledForDelete($owningSide)) { //the whole entity is going away
-                $ownerDto = $changeset->getEntity(OperationType::DELETE, $owningSide);
+                $ownerDto = $changeset?->getEntity(OperationType::DELETE, $owningSide);
             } else {
                 //we need to "fake" an update as doctrine doesn't consider just collection deletes as updates
                 //however, it does consider collection updates an entity update with empty changeset... go figure ;)
@@ -210,7 +212,7 @@ final class DoctrineAlterProducer implements DoctrineAuditProducer
      */
     //phpcs:disable SlevomatCodingStandard.Complexity.Cognitive.ComplexityTooHigh -- performance-sensitive code
     //phpcs:ignore SlevomatCodingStandard.Functions.FunctionLength -- performance-sensitive code
-    private function handleCollectionUpdates(DoctrineUnitOfWork $dUoW, ObjectManager $om, Changeset $changeset): void
+    private function handleCollectionUpdates(DoctrineUnitOfWork $dUoW, ObjectManager $om, ?Changeset $changeset): void
     {
         //This essentially replicates what \Doctrine\ORM\Persisters\Collection\ManyToManyPersister::update() does
         foreach ($dUoW->getScheduledCollectionUpdates() as $collection) {
@@ -233,13 +235,13 @@ final class DoctrineAlterProducer implements DoctrineAuditProducer
             //Also, an entity cannot be in an insert AND update state in the same transaction, so it's safe to assume
             // we can test for update and if not create
             if ($dUoW->isScheduledForUpdate($owningSide)) {
-                $potentialDto = $changeset->getEntity(OperationType::UPDATE, $owningSide);
+                $potentialDto = $changeset?->getEntity(OperationType::UPDATE, $owningSide);
                 $ownerDto = $this->uow->onUpdate(
                     $owningSide,
                     $this->dHelper->getRealEntityClass($owningSide::class)
                 );
             } elseif ($dUoW->isScheduledForInsert($owningSide)) {
-                $potentialDto = $changeset->getEntity(OperationType::CREATE, $owningSide);
+                $potentialDto = $changeset?->getEntity(OperationType::CREATE, $owningSide);
                 $ownerDto = $this->uow->onCreate(
                     $owningSide,
                     $this->dHelper->getRealEntityClass($owningSide::class)
