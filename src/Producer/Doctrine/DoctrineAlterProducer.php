@@ -68,9 +68,6 @@ final class DoctrineAlterProducer implements DoctrineAuditProducer
     public function onFlush(OnFlushEventArgs $evt): void
     {
         $changeset = $this->uow->getChangeset();
-        if ($changeset === null) {
-            return;
-        }
 
         $om = $evt instanceof ManagerEventArgs ? $evt->getObjectManager() : $evt->getEntityManager();
         $dUoW = $om->getUnitOfWork();
