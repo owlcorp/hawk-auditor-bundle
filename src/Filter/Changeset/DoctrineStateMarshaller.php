@@ -78,6 +78,10 @@ final class DoctrineStateMarshaller implements ChangesetFilter
             }
 
             $this->marshallStateChange($platform, $dUoW, $om, $record, $metadata);
+            //this can happen when all "bogus" changes are removed (e.g. embeddable objects pseudo-changes)
+            if (\count($record->stateChange) === 0) {
+                $changeset->removeEntity($record);
+            }
         }
 
         return true;
@@ -95,7 +99,9 @@ final class DoctrineStateMarshaller implements ChangesetFilter
             //Case (1) VO embedded in this prop (i.e. no native type). This means that the prop will have multiple
             // sub-fields listed. E.g. for "x" prop with vo containing "a" and "b" you will see: x, x.a, and x.b.
             // If the prop itself is embedded we just skip it as we will deal with it later when subfields are
-            // presented.
+            // presented. In addition, the embeddable itself will always be considered as changed in the stateChange
+            // as the object itself is different. Doctrine does the same check with isset() in
+            // \Doctrine\ORM\Persisters\Entity\BasicEntityPersister::prepareUpdateData and ignores them too.
             if (isset($metadata->embeddedClasses[$prop])) {
                 unset($record->stateChange[$prop]); //side note: unset in foreach is faster than building new array
                 continue;

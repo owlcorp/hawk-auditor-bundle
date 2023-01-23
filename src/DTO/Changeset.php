@@ -12,6 +12,7 @@ declare(strict_types=1);
 namespace OwlCorp\HawkAuditor\DTO;
 
 use OwlCorp\HawkAuditor\DTO\Trigger\Trigger;
+use OwlCorp\HawkAuditor\Exception\InvalidArgumentException;
 use OwlCorp\HawkAuditor\Type\OperationType;
 use Ramsey\Uuid\Uuid;
 
@@ -67,6 +68,11 @@ final class Changeset
         }
     }
 
+    public function hasChanges(): bool
+    {
+        return \count($this->entities) > 0;
+    }
+
     /** @internal */
     public function addEntity(OperationType $opType, EntityRecord $dto): void
     {
@@ -76,5 +82,23 @@ final class Changeset
         // EntityChange is broken!
         \assert(!isset($this->entities[$opType->value][$oid]));
         $this->entities[$opType->value][$oid] = $dto;
+    }
+
+    public function removeEntity(EntityRecord $entityRecord): void
+    {
+        $oid = \spl_object_id($entityRecord->entity);
+        if (!isset($this->entities[$entityRecord->type->value][$oid])) {
+            throw new InvalidArgumentException(
+                \sprintf(
+                    'Entity record "%s" (type=\"%s\", oid=%d) does not exist in the changeset id=\"%s\"',
+                    $entityRecord->id,
+                    $entityRecord->type->value,
+                    $oid,
+                    $this->id
+                )
+            );
+        }
+
+        unset($this->entities[$entityRecord->type->value][$oid]);
     }
 }

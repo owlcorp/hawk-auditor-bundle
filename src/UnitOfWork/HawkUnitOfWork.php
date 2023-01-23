@@ -98,7 +98,7 @@ class HawkUnitOfWork implements AccessUnitOfWork, AlterUnitOfWork
         static $utcTz = new \DateTimeZone('UTC');
         $this->changeset->timestamp = new \DateTimeImmutable('now', $utcTz);
         $sealedSuccessfully = $this->auditProcessor->sealChangeset($this->changeset);
-        if ($sealedSuccessfully) {
+        if ($sealedSuccessfully && $this->changeset->hasChanges()) {
             $this->auditSink->commitAudit($this->changeset);
         }
 
