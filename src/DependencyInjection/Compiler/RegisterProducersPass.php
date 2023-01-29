@@ -17,7 +17,6 @@ use OwlCorp\HawkAuditor\UnitOfWork\UnitOfWork;
 use Symfony\Component\DependencyInjection\ContainerBuilder;
 use Symfony\Component\DependencyInjection\Definition;
 
-//this needs to run BEFORE custom doctrine event reg! => but why... it was late ;<
 class RegisterProducersPass extends AbstractUoWPass
 {
     public const SVC_ID = HawkAuditorExtension::BUNDLE_ALIAS . '.%s.producer.%s'; //vars: pipeline; producer

@@ -27,10 +27,10 @@ class HawkAuditorBundle extends Bundle
     {
         parent::build($container);
 
-        //All passes are registered after extensions and doctrine pass (TYPE_BEFORE_OPTIMIZATION)
+        //All passes are registered after extensions and before doctrine pass (TYPE_BEFORE_OPTIMIZATION)
         $injectionHelper = new InjectionHelper();
         $container->addCompilerPass(new RegisterProducersPass($injectionHelper), PassConfig::TYPE_BEFORE_OPTIMIZATION, -255);
-        $container->addCompilerPass(new DoctrineEvtSubscribersPass(), PassConfig::TYPE_BEFORE_OPTIMIZATION, -255);
+        $container->addCompilerPass(new DoctrineEvtSubscribersPass(), PassConfig::TYPE_BEFORE_OPTIMIZATION, 255);
         $container->addCompilerPass(new RegisterMicrotimeTypePass(), PassConfig::TYPE_BEFORE_OPTIMIZATION, -255);
         $container->addCompilerPass(new ConfigureFilterProviderPass(), PassConfig::TYPE_BEFORE_OPTIMIZATION, -255);
         $container->addCompilerPass(new RegisterSinksPass(), PassConfig::TYPE_BEFORE_OPTIMIZATION, -255);

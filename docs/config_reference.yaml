@@ -41,8 +41,14 @@ hawk_auditor:
         producers:
             # There are shortcuts defined for some built-in producers. Currently, there are only two: doctrine_alter and
             # doctrine_access.
+            # Warning: if you're using doctrine/doctrine-bundle with multiple EMs and share the same database connection
+            # (i.e. the same name/DBAL instance, not DSN) you will get audit from ALL entity managers using the same
+            # connection, despite specifying just one EM name. This is a design choice by Doctrine, as they deliberately
+            # alias EM EventMangers (i.e. Doctrine's component delivering events to Hawk) to DBAL connection's EventMgr:
+            # https://github.com/doctrine/DoctrineBundle/blob/d1a536dfa86914c6db3b61a1432ccc9c87a327bb/DependencyInjection/DoctrineExtension.php#L681-L684
             - doctrine_alter:
                   manager_name: null # name of OM/EM to use from \Doctrine\Persistence\ManagerRegistry; null=default one
+                                     # as set in doctrine/doctrine-bundle config (doctrine.default_entity_manager param)
 
             # you can also just use a shortcut like below if you don't want to configure any options
             - doctrine_alter
@@ -323,7 +329,8 @@ hawk_auditor:
             # section not being defined at all. The code will explicitly respect an empty sinks section, and you will
             # end up with nothing being persisted!
             - doctrine_entity:
-                manager_name: null # name of OM/EM to use from \Doctrine\Persistence\ManagerRegistry; null=default one
+                  manager_name: null # name of OM/EM to use from \Doctrine\Persistence\ManagerRegistry; null=default one
+                                     # as set in doctrine/doctrine-bundle config (doctrine.default_entity_manager param)
 
             # you can define the same sink twice too (e.g. to copy data to multiple OMs/EMs)
             - doctrine_entity:

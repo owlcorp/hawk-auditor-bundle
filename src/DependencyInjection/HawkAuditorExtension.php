@@ -71,6 +71,8 @@ final class HawkAuditorExtension extends ConfigurableExtension implements Compil
     public const FILTER_FIELD_TAG = self::BUNDLE_ALIAS . '.%s.filter.field'; //vars: pipeline
     public const FILTER_CHANGESET_TAG = self::BUNDLE_ALIAS . '.%s.filter.changeset'; //vars: pipeline
 
+    private const DOCTRINE_DEFAULT_EM = '%doctrine.default_entity_manager%';
+
     //This is deliberately a map of short to FQCNs, as later on something may be moved and two aliases can point to
     // the same implementation (vs. you cannot have two classes using the same alias)
     public const PRODUCERS_SHORT_ALIASES = [
@@ -252,7 +254,8 @@ final class HawkAuditorExtension extends ConfigurableExtension implements Compil
             // way as any custom producer. However, we're not adding them to $producers here as the compiler pass
             // looks at both tags AND in the custom parameter.
             if (isset(self::PRODUCERS_SHORT_ALIASES[$name])) {
-                $this->configureDoctrineProducer($container, $pipeline, $name, $config['manager_name'] ?? 'default');
+                $managerName = $config['manager_name'] ?? self::DOCTRINE_DEFAULT_EM;
+                $this->configureDoctrineProducer($container, $pipeline, $name, $managerName);
                 $this->hasDoctrineProducers ??= true;
 
             } else {
@@ -461,7 +464,8 @@ final class HawkAuditorExtension extends ConfigurableExtension implements Compil
             // way as any custom sink. However, we're not adding them to $sinks here as the compiler pass
             // looks at both tags AND in the custom parameter.
             if (isset(self::SINKS_SHORT_ALIASES[$name])) {
-                $this->configureDoctrineSink($container, $pipeline, $name, $config['manager_name'] ?? 'default');
+                $managerName = $config['manager_name'] ?? self::DOCTRINE_DEFAULT_EM;
+                $this->configureDoctrineSink($container, $pipeline, $name, $managerName);
 
             } else {
                 //This $container has only parameters, only a compiler pass can look for user services, so we have to
@@ -497,7 +501,7 @@ final class HawkAuditorExtension extends ConfigurableExtension implements Compil
         );
 
         $sink = $container->register($sinkSvcName, self::SINKS_SHORT_ALIASES[$sink]);
-        $sink->setArgument('$em', new Reference($emSvcName));
+        $sink->setArgument('$em', new Reference($container->getParameterBag()->resolveValue($emSvcName)));
         $sink->addTag(\sprintf(Compiler\RegisterSinksPass::TAG_NAME, $pipeline));
     }
 

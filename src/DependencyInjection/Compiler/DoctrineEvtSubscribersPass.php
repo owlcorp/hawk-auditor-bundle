@@ -13,21 +13,30 @@ namespace OwlCorp\HawkAuditor\DependencyInjection\Compiler;
 
 use OwlCorp\HawkAuditor\DependencyInjection\HawkAuditorExtension;
 use OwlCorp\HawkAuditor\Exception\InvalidArgumentException;
+use OwlCorp\HawkAuditor\Exception\LogicException;
 use OwlCorp\HawkAuditor\Exception\RuntimeException;
-use OwlCorp\HawkAuditor\Exception\ThisShouldNotBePossibleException;
 use OwlCorp\HawkAuditor\HawkAuditorBundle;
-use Symfony\Bridge\Doctrine\ContainerAwareEventManager;
-use Symfony\Component\DependencyInjection\ChildDefinition;
 use Symfony\Component\DependencyInjection\Compiler\CompilerPassInterface;
 use Symfony\Component\DependencyInjection\ContainerBuilder;
-use Symfony\Component\DependencyInjection\Definition;
 use Symfony\Component\DependencyInjection\Exception\ServiceNotFoundException;
 use Symfony\Component\DependencyInjection\Reference;
 
+/**
+ * Piggybacks on Symfony's DoctrineBridge lazy event listeners registration
+ *
+ * This needs to run BEFORE Symfony RegisterEventListenersAndSubscribersPass, as that compiler pass actually scans for
+ * the tags.
+ */
 class DoctrineEvtSubscribersPass implements CompilerPassInterface
 {
     public const TAG_NAME = HawkAuditorExtension::BUNDLE_ALIAS . '.doctrine_event_subscriber';
     public const TAG_EM_ATTR = 'manager';
+
+    /** @var array<string, string> */
+    private array $connectionSvcMap;
+
+    /** @var array<string, string> */
+    private array $emNameConnectionMap = [];
 
     public function process(ContainerBuilder $container)
     {
@@ -57,85 +66,70 @@ class DoctrineEvtSubscribersPass implements CompilerPassInterface
                     );
                 }
 
-                $managerName = $tagAttr[self::TAG_EM_ATTR];
-                $this->registerSubscriberAtEvtMgt($container, $svcId, $managerName);
-                $container->log($this, \sprintf('Registered "%s" as event subscriber with "%s"', $svcId, $managerName));
+                $managerName = (string)$container->getParameterBag()->resolveValue($tagAttr[self::TAG_EM_ATTR]);
+                $connection = $this->emNameConnectionMap[$managerName]
+                              ?? $this->getConnectionForManager($container, $svcId, $managerName);
+                $container->getDefinition($svcId)
+                          ->addTag('doctrine.event_subscriber', ['connection' => $connection, 'priority' => 4096]);
+                $container->log($this, \sprintf('Tagged "%s" as event subscriber for "%s"', $svcId, $managerName));
             }
         }
     }
 
-
-    private function registerSubscriberAtEvtMgt(ContainerBuilder $container, string $svcId, string $manager): void
+    private function getConnectionForManager(ContainerBuilder $container, string $svcId, string $manager): string
     {
+        $emSvcId = sprintf('doctrine.orm.%s_entity_manager', $manager); //as set in DoctrineExtension
         try {
-            $emDef = $this->resolveEvtMgrDefinition($container, $svcId, $manager);
-            $emDefClass = $container->getParameterBag()->resolveValue($emDef->getClass());
-        } catch (\Throwable $t) {
-            throw new ThisShouldNotBePossibleException(
-                \sprintf(
-                    'Cannot register "%s" service marked with "%s" tag as an event subscriber at "%s" entity ' .
-                    'manager. Resolving doctrine bridge class failed - please report this as a bug. %s',
-                    $svcId,
-                    self::TAG_NAME,
-                    $manager,
-                    HawkAuditorBundle::getBugReportStatement()
-                ),
-                $t->getCode(),
-                $t
-            );
-        }
-
-        //This logic is similar to what symfony/doctrine-bridge/(...)/RegisterEventListenersAndSubscribersPass does
-        if ($emDefClass === ContainerAwareEventManager::class) {
-            $refs = $emDef->getArguments()[1] ?? [];
-            $refs[] = new Reference($svcId);
-            $emDef->setArgument(1, $refs);
-        } else {
-            $emDef->addMethodCall('addEventSubscriber', [new Reference($svcId)]);
-        }
-    }
-
-    private function resolveEvtMgrDefinition(ContainerBuilder $container, string $svcId, string $manager): Definition
-    {
-        try {
-            $evtMgrId = \sprintf('doctrine.orm.%s_entity_manager.event_manager', $manager);
-            $emDef = $container->findDefinition($evtMgrId);
+            $emSvc = $container->findDefinition($emSvcId);
         } catch (ServiceNotFoundException $e) {
             throw new RuntimeException(
                 \sprintf(
                     'Cannot register "%s" service marked with "%s" tag as an event subscriber at "%s" entity ' .
-                    'manager. Unable to find entity manager event manager "%s".',
+                    'manager. Unable to find entity manager "%s".',
                     $svcId,
                     self::TAG_NAME,
                     $manager,
-                    $evtMgrId
+                    $emSvcId
                 ),
                 $e->getCode(),
                 $e
             );
         }
 
+        if (!isset($this->connectionSvcMap) && $container->hasParameter('doctrine.connections')) {
+            //This parameter is used by Symfony's Doctrine Bridge in RegisterEventListenersAndSubscribersPass and is
+            // defined by the Doctrine Bundle. It contains a map of connName => connServiceId
+            $this->connectionSvcMap = \array_flip($container->getParameter('doctrine.connections'));
+        }
 
-        try {
-            $emDefClass = $emDef->getClass();
-            if ($emDefClass === null && $emDef instanceof ChildDefinition) {
-                $emDef = $container->findDefinition($emDef->getParent());
-            }
-        } catch (ServiceNotFoundException $e) {
-            throw new ThisShouldNotBePossibleException(
+        //These shouldn't happen, unless something changes internally in Doctrine Bundle or Doctrine Bridge - connection
+        // configured for the manager by definition should exist
+        $emConnSvc = $emSvc->getArgument(0);
+        if (!($emConnSvc instanceof Reference)) {
+            $type = \gettype($emConnSvc);
+            throw new LogicException(
                 \sprintf(
-                    'Cannot register "%s" service marked with "%s" tag as an event subscriber at "%s" entity ' .
-                    'manager. Resolving doctrine bridge wrapper failed - please report this as a bug. %s',
-                    $svcId,
-                    self::TAG_NAME,
-                    $manager,
-                    HawkAuditorBundle::getBugReportStatement()
-                ),
-                $e->getCode(),
-                $e
+                    'Expected entity manager service "%s" argument 0 to contain a reference to DBAL connection - ' .
+                    'found "%s" instead. Please report this as a bug. ' .
+                    HawkAuditorBundle::getBugReportStatement(),
+                    $emSvcId,
+                    $type === 'object' ? $emConnSvc::class : $type
+                )
+            );
+        }
+        $emConnSvcId = (string)$emConnSvc;
+        if (!isset($this->connectionSvcMap[$emConnSvcId])) {
+            throw new LogicException(
+                \sprintf(
+                    'Entity manager service "%s" argument 0 references DBAL connection service "%s" but such ' .
+                    'connection does not map to a name. Please report this as a bug. ' .
+                    HawkAuditorBundle::getBugReportStatement(),
+                    $emSvcId,
+                    $emConnSvcId
+                )
             );
         }
 
-        return $emDef;
+        return $this->connectionSvcMap[$emConnSvcId];
     }
 }
